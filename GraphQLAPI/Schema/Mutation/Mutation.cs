@@ -1,4 +1,6 @@
 ﻿using GraphQLAPI.Schema.Query;
+using HotChocolate.Subscriptions;
+using GraphQLAPI.Schema.Subscription;
 
 namespace GraphQLAPI.Schema.Mutation
 {
@@ -11,7 +13,7 @@ namespace GraphQLAPI.Schema.Mutation
             _courses = new List<CourseResult>();
         }
 
-        public CourseResult CreateCourse(CourseInputType CourseInputType)
+        public async Task<CourseResult> CreateCourse(CourseInputType CourseInputType, [Service] ITopicEventSender topicEventSender)
         {
             var res = new CourseResult
             {
@@ -23,24 +25,29 @@ namespace GraphQLAPI.Schema.Mutation
 
             _courses.Add(res);
 
+            await topicEventSender.SendAsync<CourseResult>(nameof(Subscription.Subscription.CourseCreated), res);
+
             return res;
         }
-
-        public CourseResult UpdateCourse(int Id,CourseInputType CourseInputType)
+        public CourseResult UpdateCourse(int Id,CourseInputType CourseInputType, [Service] ITopicEventSender topicEventSender)
         {
-            var res = _courses.FirstOrDefault(c => c.Id == Id);
+            var course = _courses.FirstOrDefault(c => c.Id == Id);
 
-            if (res is null)
+            if (course is null)
             {
                 throw new GraphQLException(new Error("Course not found", "COURSE_NOT_FOUND"));
             }
 
-            res.Name = CourseInputType.Name;
-            res.Subject = CourseInputType.Subject;
-            res.InstructorId = CourseInputType.InstructorId;
+            course.Name = CourseInputType.Name;
+            course.Subject = CourseInputType.Subject;
+            course.InstructorId = CourseInputType.InstructorId;
 
-            _courses.Add(res);
-            return res;
+            _courses.Add(course);
+
+            string send = $"{course.Id}_{nameof(Subscription.Subscription.CourseUpdated)}";
+            topicEventSender.SendAsync<CourseResult>(send, course);
+
+            return course;
         }
 
         public bool DeleteCourse(int Id)
